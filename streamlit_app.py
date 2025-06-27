@@ -503,8 +503,6 @@ elif page == "Visualization 📊":
         with column3:
             st.write("")
 
-
-
 elif page == "Prediction 📣":
     # Loading Animation
     with st.spinner('Loading page...'):
@@ -525,12 +523,14 @@ elif page == "Prediction 📣":
         about_text = """
         # Regression Analysis
         This page performs regression analysis using various models to predict the chance of admission based on the user input features. The models used in this app include:
+
         - **Linear Regression**: A linear approximation of a causal relationship between two or more variables.
         - **Decision Tree (for regression)**: A non-parametric supervised learning model that predicts continuous numerical values by recursively partitioning data based on feature values.
         - **Random Forest (for regression)**: An ensemble learning method that uses multiple decision trees to make predictions.
         - **eXtreme Gradient Boosting (XGBoost for regression)**: A powerful and efficient supervised learning algorithm that builds an ensemble of decision trees sequentially, with each tree correcting the errors of its predecessors. 
         - **❤️‍🔥 Deep Learning (Neural Network Regression)**: A flexible, multi-layered learning approach that models complex, non-linear relationships between input features and outcomes by training artificial neurons using backpropagation.
         - **❤️‍🔥 PyCaret**: An open-source, low-code machine learning library that automates the process of training and evaluating multiple models, including regression models.
+
         Each model's performance is evaluated using metrics including Mean Absolute Error (MAE), Mean Squared Error (MSE), and R-squared (R²). The page also clearly reflects the percentage change in metrics after changing the models' parameters. 
         
         Visualizations, like the comparision of the actual vs. predicted values for each model, are also provided.
@@ -912,70 +912,64 @@ elif page == "Prediction 📣":
             except FileNotFoundError:
                 st.error("PyCaret results file not found.")
             
-            st.write("### ⚡️ Compare Top 3 Regressors with PyCaret")
+            st.write("### ⚡️ Closer Look with PyCaret Experiments on MLFlow")
 
-            # DAGsHub MLflow Integration
-            dagshub.init(repo_owner='Yazhen-L', repo_name='First-Repo', mlflow=True)
+            if "mlflow_access" not in st.session_state:
+                st.session_state["mlflow_access"] = False
 
-            if "pycaret_triggered" not in st.session_state:
-                st.session_state["pycaret_triggered"] = False
+            if "mlflow_password_verified" not in st.session_state:
+                st.session_state["mlflow_password_verified"] = False
+            
+            if "show_password_input" not in st.session_state:
+                st.session_state["show_password_input"] = False
 
-            # Split data into training and testing sets
-            admission_train, admission_test = train_test_split(df, test_size=0.2, random_state=42)
-            # Load the top 3 models from session state if they exist
-            if st.button("🚀 Run Comparison & Log Top 3"):
-                st.session_state["pycaret_triggered"] = True
+            back_button = False
 
-            if st.session_state["pycaret_triggered"]:
-                st.warning("⚠️ Are you sure you want to re-train the model with PyCaret? This will spend around 3.5 min to load the top 3 models. ⏱️ If so, enter the Password: WAIT3.5min")
-                password = st.text_input("🔐 Enter Password to continue: ", type="password", key="pycaret_password")
+            if not st.session_state["mlflow_access"]:
+                if st.button("🚀 Go to MLFlow Experiment Record Page"):
+                    st.session_state["show_password_input"] = True
+
+            if st.session_state["show_password_input"]:
+                st.warning("⚠️ Are you sure you want to go to MLFlow page with PyCaret running records? This will be a different website page. ⏱️ If so, enter the Password: YES")
+                password = st.text_input("🔐 Enter Password to continue: ", type="password", key="mlflow_password")
+
                 if password:
-                    if password != "WAIT3.5min":
+                    if password != "YES":
                         st.error('Incorrect Password!')
-                        st.stop()
                     else:
-                        st.success("Access Granted. Please wait ~3.5 min while PyCaret loads the top 3 models...")
-                        with st.spinner("Training and logging top models... (this may take a few minutes)"):
-                            # Initialize PyCaret setup with the training set
-                            reg1 = setup(data= admission_train, target='Chance of Admit ', session_id=42, verbose=False)
-                            top3_models = compare_models(n_select=3)
+                        st.session_state["mlflow_password_verified"] = True
+                        st.session_state["mlflow_access"] = True
+                        st.success("✅ Password verified! Loading MLflow access...")
+                        st.session_state["show_password_input"] = False
+                        st.rerun()
+                            
+            if st.session_state["mlflow_access"]:
+                try:
+                    os.environ["DAGSHUB_QUIET"] = "1"
+                    DAGSHUB_TOKEN = st.secrets["DAGSHUB_TOKEN"]
+                    repo_owner = "Yazhen-L"
+                    repo_name = "First-Repo"
+                    
+                    tracking_uri = f"https://dagshub.com/{repo_owner}/{repo_name}.mlflow"
+                    mlflow.set_tracking_uri(tracking_uri)
+                    
+                    os.environ["MLFLOW_TRACKING_USERNAME"] = repo_owner
+                    os.environ["MLFLOW_TRACKING_PASSWORD"] = DAGSHUB_TOKEN
+                    
+                    st.success(f"✅ MLflow tracking configured successfully! Here is the Link:")
+                    st.markdown(f"[Click here to access MLflow UI]({tracking_uri})", unsafe_allow_html=True)
+                        
+                except KeyError:
+                    st.error("DAGSHUB_TOKEN has not been set up yet. Please check Streamlit Secrets.")
+                except Exception as e:
+                    st.error(f"Error configuring MLflow: {str(e)}")
 
-                            # Save models in session_state for use in tab2
-                            st.session_state["top3_models"] = top3_models
-
-                            st.write("### 🏅 Top 3 Models (Before Tuning):")
-                            for i, model in enumerate(top3_models, 1):
-                                with mlflow.start_run(run_name=f"Top Model {i}: {model.__class__.__name__}"):
-                                    model_name = f"admission_model_{i}"
-
-                                    # Log model
-                                    #mlflow.sklearn.log_model(model, model_name)
-
-                                    # Log parameters
-                                    params = model.get_params()
-                                    for key, value in params.items():
-                                        mlflow.log_param(key, value)
-                                    
-                                    y_test = admission_test["Chance of Admit "]
-                                    X_test = admission_test.drop("Chance of Admit ", axis=1)
-                                    y_pred = model.predict(X_test)
-
-                                    mae = mean_absolute_error(y_test, y_pred)
-                                    mse = mean_squared_error(y_test, y_pred)
-                                    r2 = r2_score(y_test, y_pred)
-
-                                    mlflow.log_metric("mean_absolute_error", mae)
-                                    mlflow.log_metric("mean_squared_error", mse)
-                                    mlflow.log_metric("r_squared_score", r2)
-
-                                    #mlflow.sklearn.log_model(model, f"top_model_{i}")
-
-                                    st.write(f"**Model {i}: {model.__class__.__name__}**")
-                                    st.write(f"Mean Absolute Error (MAE):  {mae:.4f} | Mean Squared Error (MSE):  {mse:.4f} | R-squared (R²):  {r2:.4f}")
-                                    dagshub_mlflow_url = "https://dagshub.com/Yazhen-L/First-Repo.mlflow" 
-                                    st.markdown(f"[Go to MLflow UI on DAGsHub](https://dagshub.com/Yazhen-L/First-Repo.mlflow)") 
-                                mlflow.end_run()
-
+                back_button = st.button("⬅️ Back to Original Status")
+                    
+            if back_button:
+                st.session_state["mlflow_access"] = False
+                st.session_state["mlflow_password_verified"] = False
+                st.rerun()
 
 
 elif page == "Explainability 📝":
