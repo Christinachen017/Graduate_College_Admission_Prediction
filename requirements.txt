@@ -5,4 +5,4 @@ xgboost
 matplotlib
 mlflow
 dagshub
-streamlit_option_menu
+streamlit-option-menu
